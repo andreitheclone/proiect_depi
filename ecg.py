@@ -2,6 +2,8 @@ import wfdb
 import numpy as np
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
+import os
+from glob import glob
 
 def estimate_blood_pressure(ecg_signal, fs):
     # Find R peaks
@@ -21,45 +23,78 @@ def estimate_blood_pressure(ecg_signal, fs):
     
     return systolic, diastolic, heart_rate
 
-# Specify the path to your .dat and .hea files (without the file extension)
-# Example: if you have 'ecg_data.dat' and 'ecg_data.hea', just use 'ecg_data'
-record_path = 'C:/Users/gutaa/Videos/proiect_depi/dataset/0001'
+def process_database(database_path):
+    # Get all .dat files in the directory
+    dat_files = glob(os.path.join(database_path, "*.dat"))
+    results = []
 
-try:
-    # Read the record (this will read both .dat and .hea files)
-    record = wfdb.rdrecord(record_path)
+    for dat_file in dat_files:
+        # Remove .dat extension to get record path
+        record_path = dat_file[:-4]
+        try:
+            # Read the record
+            record = wfdb.rdrecord(record_path)
+            
+            # Get the ECG signal (first channel)
+            ecg_signal = record.p_signal[:, 0]
+            
+            # Estimate blood pressure
+            systolic, diastolic, heart_rate = estimate_blood_pressure(ecg_signal, record.fs)
+            
+            # Store results
+            results.append({
+                'record': os.path.basename(record_path),
+                'heart_rate': heart_rate,
+                'systolic': systolic,
+                'diastolic': diastolic
+            })
+            
+            print(f"\nProcessed {os.path.basename(record_path)}:")
+            print(f"Heart Rate: {heart_rate:.1f} BPM")
+            print(f"Systolic BP: {systolic:.1f} mmHg")
+            print(f"Diastolic BP: {diastolic:.1f} mmHg")
+            
+        except Exception as e:
+            print(f"Error processing {record_path}: {str(e)}")
     
-    # Get signal information
-    print(f"Number of signals: {record.n_sig}")
-    print(f"Sampling frequency: {record.fs} Hz")
-    print(f"Signal names: {record.sig_name}")
+    return results
+
+# Specify the database directory
+database_path = 'C:/Users/gutaa/Videos/proiect_depi/dataset'
+
+# Process all records
+results = process_database(database_path)
+
+# Calculate average values
+if results:
+    avg_hr = np.mean([r['heart_rate'] for r in results])
+    avg_systolic = np.mean([r['systolic'] for r in results])
+    avg_diastolic = np.mean([r['diastolic'] for r in results])
     
-    # Get the ECG signal (assuming it's the first channel)
-    ecg_signal = record.p_signal[:, 0]
+    print("\nDatabase Summary:")
+    print(f"Average Heart Rate: {avg_hr:.1f} BPM")
+    print(f"Average Systolic BP: {avg_systolic:.1f} mmHg")
+    print(f"Average Diastolic BP: {avg_diastolic:.1f} mmHg")
     
-    # Estimate blood pressure
-    systolic, diastolic, heart_rate = estimate_blood_pressure(ecg_signal, record.fs)
+    # Plot distribution of results
+    plt.figure(figsize=(15, 5))
     
-    print(f"\nEstimated values:")
-    print(f"Heart Rate: {heart_rate:.1f} BPM")
-    print(f"Estimated Systolic BP: {systolic:.1f} mmHg")
-    print(f"Estimated Diastolic BP: {diastolic:.1f} mmHg")
+    plt.subplot(131)
+    plt.hist([r['heart_rate'] for r in results], bins=20)
+    plt.title('Heart Rate Distribution')
+    plt.xlabel('BPM')
     
-    # Plot the signal
-    plt.figure(figsize=(12, 6))
-    plt.subplot(211)
-    plt.plot(ecg_signal)
-    plt.title('ECG Signal')
-    plt.ylabel('Amplitude')
+    plt.subplot(132)
+    plt.hist([r['systolic'] for r in results], bins=20)
+    plt.title('Systolic BP Distribution')
+    plt.xlabel('mmHg')
     
-    plt.subplot(212)
-    plt.hist(ecg_signal, bins=50)
-    plt.title('ECG Signal Distribution')
-    plt.xlabel('Amplitude')
+    plt.subplot(133)
+    plt.hist([r['diastolic'] for r in results], bins=20)
+    plt.title('Diastolic BP Distribution')
+    plt.xlabel('mmHg')
+    
     plt.tight_layout()
     plt.show()
-
-except FileNotFoundError:
-    print(f"Error: Could not find the files {record_path}.dat and/or {record_path}.hea")
-except Exception as e:
-    print(f"An error occurred: {str(e)}")
+else:
+    print("No records were processed successfully.")
